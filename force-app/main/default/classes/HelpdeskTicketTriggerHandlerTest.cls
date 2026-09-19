@@ -66,4 +66,18 @@ static void setup() {
         Assert.areEqual('Error Detected', err);
 
     }
+
+    @isTest
+static void diag() {
+    Integer assigned = [SELECT COUNT() FROM PermissionSetAssignment
+        WHERE AssigneeId = :UserInfo.getUserId() AND PermissionSet.Name = 'Helpdesk_Ticket_Access'];
+    String info = 'assigned=' + assigned
+        + ' objCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.isCreateable()
+        + ' catCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Category__c.isCreateable()
+        + ' empCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Employee__c.isCreateable()
+        + ' priCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Priority__c.isCreateable();
+    Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c(Category__c = 'Software', Employee__c = UserInfo.getUserId());
+    Database.SaveResult sr = Database.insert(ht, false);
+    Assert.isTrue(sr.isSuccess(), info + ' errors=' + sr.getErrors());
+}
 }
