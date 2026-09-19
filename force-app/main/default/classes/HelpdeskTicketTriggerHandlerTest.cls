@@ -1,6 +1,12 @@
 @isTest
 private class HelpdeskTicketTriggerHandlerTest {
 
+    @testSetup
+static void setup() {
+    PermissionSet ps = [SELECT Id FROM PermissionSet WHERE Name = 'Helpdesk_Ticket_Access' LIMIT 1];
+    insert new PermissionSetAssignment(AssigneeId = UserInfo.getUserId(), PermissionSetId = ps.Id);
+}
+
     @isTest
     static void singleInsert() {
        Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
@@ -14,9 +20,9 @@ private class HelpdeskTicketTriggerHandlerTest {
         Test.stopTest();
         Helpdesk_Ticket__c htP = [Select priority__c from Helpdesk_Ticket__c WHERE Employee__c =:currentUser  LIMIT 1];
 		Assert.areEqual('Medium',htP.Priority__c);
-        
+
     }
-    
+
     @isTest
     static void bulkTest(){
         List<Helpdesk_Ticket__c> htList = new list<Helpdesk_Ticket__c>();
@@ -43,9 +49,9 @@ private class HelpdeskTicketTriggerHandlerTest {
         Assert.areEqual(200,htCount);
         Assert.areEqual('High',htP1.Priority__c);
         Assert.areEqual('Medium',htP2.Priority__c);
-        
+
     }
-    
+
     @isTest
     static void negativeTest(){
         Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
@@ -58,6 +64,6 @@ private class HelpdeskTicketTriggerHandlerTest {
            err = 'Error Detected';
         }
         Assert.areEqual('Error Detected', err);
-        
+
     }
 }
