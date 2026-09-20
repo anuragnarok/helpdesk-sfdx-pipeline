@@ -1,83 +1,102 @@
 @isTest
 private class HelpdeskTicketTriggerHandlerTest {
 
-    @testSetup
+@testSetup
 static void setup() {
+    Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+    User u = new User(
+        Alias = 'htuser', Email = 'htuser@example.com', EmailEncodingKey = 'UTF-8',
+        LastName = 'Tester', LanguageLocaleKey = 'en_US', LocaleSidKey = 'en_US',
+        ProfileId = p.Id, TimeZoneSidKey = 'America/Los_Angeles',
+        UserName = 'htuser' + System.currentTimeMillis() + '@helpdeskdevops.test'
+    );
+    insert u;
     PermissionSet ps = [SELECT Id FROM PermissionSet WHERE Name = 'Helpdesk_Ticket_Access' LIMIT 1];
-    insert new PermissionSetAssignment(AssigneeId = UserInfo.getUserId(), PermissionSetId = ps.Id);
+    insert new PermissionSetAssignment(AssigneeId = u.Id, PermissionSetId = ps.Id);
 }
 
-    @isTest
-    static void singleInsert() {
-       Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
-        String currentUser = UserInfo.getUserId();
+private static User getTestUser() {
+    return [SELECT Id FROM User WHERE Alias = 'htuser' ORDER BY CreatedDate DESC LIMIT 1];
+}
 
-        ht.Category__c = 'Software';
-        ht.Employee__c = currentUser;
-
+@isTest
+static void singleInsert() {
+    User u = getTestUser();
+    System.runAs(u) {
+        Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c(Category__c = 'Software', Employee__c = u.Id);
         Test.startTest();
-        Insert ht;
+        insert ht;
         Test.stopTest();
-        Helpdesk_Ticket__c htP = [Select priority__c from Helpdesk_Ticket__c WHERE Employee__c =:currentUser  LIMIT 1];
-		Assert.areEqual('Medium',htP.Priority__c);
-
+        Helpdesk_Ticket__c htP = [SELECT Priority__c FROM Helpdesk_Ticket__c WHERE Employee__c = :u.Id LIMIT 1];
+        Assert.areEqual('Medium', htP.Priority__c);
     }
+}
 
-    @isTest
-    static void bulkTest(){
-        List<Helpdesk_Ticket__c> htList = new list<Helpdesk_Ticket__c>();
-        for(Integer i=0;i<100;i++){
-            Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
-            ht.Category__c = 'Software';
-            ht.Employee__c = UserInfo.getUserId();
-            htList.add(ht);
+@isTest
+static void bulkTest() {
+    User u = getTestUser();
+    System.runAs(u) {
+        List<Helpdesk_Ticket__c> htList = new List<Helpdesk_Ticket__c>();
+        for (Integer i = 0; i < 100; i++) {
+            htList.add(new Helpdesk_Ticket__c(Category__c = 'Software', Employee__c = u.Id));
         }
-        for(Integer i=0;i<100;i++){
-            Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
-            ht.Category__c = 'Hardware';
-            ht.Employee__c = UserInfo.getUserId();
-            htList.add(ht);
+        for (Integer i = 0; i < 100; i++) {
+            htList.add(new Helpdesk_Ticket__c(Category__c = 'Hardware', Employee__c = u.Id));
         }
-        if(!htList.isEmpty()){
-            Test.StartTest();
-            insert htList;
-            Test.StopTest();
-        }
-        Integer htCount = [Select Count() from Helpdesk_Ticket__c where Employee__c =:UserInfo.getUserId() ];
-         Helpdesk_Ticket__c htP1 = [Select priority__c from Helpdesk_Ticket__c WHERE Employee__c =:UserInfo.getUserId() AND category__c='Hardware'  LIMIT 1];
-         Helpdesk_Ticket__c htP2 = [Select priority__c from Helpdesk_Ticket__c WHERE Employee__c =:UserInfo.getUserId() AND category__c='Software'  LIMIT 1];
-        Assert.areEqual(200,htCount);
-        Assert.areEqual('High',htP1.Priority__c);
-        Assert.areEqual('Medium',htP2.Priority__c);
-
+        Test.startTest();
+        insert htList;
+        Test.stopTest();
+        Integer htCount = [SELECT COUNT() FROM Helpdesk_Ticket__c WHERE Employee__c = :u.Id];
+        Helpdesk_Ticket__c htP1 = [SELECT Priority__c FROM Helpdesk_Ticket__c WHERE Employee__c = :u.Id AND Category__c = 'Hardware' LIMIT 1];
+        Helpdesk_Ticket__c htP2 = [SELECT Priority__c FROM Helpdesk_Ticket__c WHERE Employee__c = :u.Id AND Category__c = 'Software' LIMIT 1];
+        Assert.areEqual(200, htCount);
+        Assert.areEqual('High', htP1.Priority__c);
+        Assert.areEqual('Medium', htP2.Priority__c);
     }
+}
 
-    @isTest
-    static void negativeTest(){
-        Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c();
-        ht.Category__c ='mobile';
-        ht.Employee__c = UserInfo.getUserId();
-        String err = '';
-        try{
-            insert ht;
-        }catch(HelpdeskTicketTriggerHandler.InvalidCategoryException e){
-           err = 'Error Detected';
-        }
-        Assert.areEqual('Error Detected', err);
-
+@isTest
+static void negativeTest() {
+User u = getTestUser();
+System.runAs(u) {
+    // blank category is the only value that reaches the 'when else' branch
+    Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c(Employee__c = u.Id);
+    String err = '';
+    try {
+        insert ht;
+    } catch (DmlException e) {
+        err = e.getMessage();
     }
+    Assert.isTrue(err.contains('is not a valid value'), 'Unexpected message: ' + err);
+}
+}
 
-    @isTest
-static void diag() {
-    Integer assigned = [SELECT COUNT() FROM PermissionSetAssignment
-        WHERE AssigneeId = :UserInfo.getUserId() AND PermissionSet.Name = 'Helpdesk_Ticket_Access'];
-    String info = 'assigned=' + assigned
-        + ' objCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.isCreateable()
-        + ' catCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Category__c.isCreateable()
-        + ' empCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Employee__c.isCreateable()
-        + ' priCreate=' + Schema.SObjectType.Helpdesk_Ticket__c.fields.Priority__c.isCreateable();
-    Helpdesk_Ticket__c ht = new Helpdesk_Ticket__c(Category__c = 'Software', Employee__c = UserInfo.getUserId());
-    Database.SaveResult sr = Database.insert(ht, false);
-    Assert.isTrue(sr.isSuccess(), info + ' errors=' + sr.getErrors());
+@isTest
+static void accessAndOtherCategories() {
+    User u = getTestUser();
+    System.runAs(u) {
+        Helpdesk_Ticket__c a = new Helpdesk_Ticket__c(Category__c = 'Access', Employee__c = u.Id);
+        Helpdesk_Ticket__c o = new Helpdesk_Ticket__c(Category__c = 'Other', Employee__c = u.Id);
+        insert new List<Helpdesk_Ticket__c>{a, o};
+        Assert.areEqual('High', [SELECT Priority__c FROM Helpdesk_Ticket__c WHERE Id = :a.Id].Priority__c);
+        Assert.areEqual('Low', [SELECT Priority__c FROM Helpdesk_Ticket__c WHERE Id = :o.Id].Priority__c);
+    }
+}
+
+@isTest
+static void serviceCreatesTicket() {
+    User u = getTestUser();
+    System.runAs(u) {
+        HelpdeskTicketService.InsertWrapper iw = new HelpdeskTicketService.InsertWrapper();
+        iw.Subject = 'Laptop screen cracked';
+        iw.Category = 'Hardware';
+        iw.Description = 'Screen cracked after a fall';
+        Test.startTest();
+        List<HelpdeskTicketService.OuterWrapper> res =
+            HelpdeskTicketService.createTicket(new List<HelpdeskTicketService.InsertWrapper>{iw});
+        Test.stopTest();
+        Assert.areEqual(1, res.size());
+        Assert.isNotNull(res[0].Id);
+    }
 }
 }
